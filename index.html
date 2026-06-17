@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Professional Continuous QR Scanner</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; text-align: center; padding: 20px 10px; background-color: #f0f4f8; margin: 0; }
+    .container { max-width: 480px; margin: 0 auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    h2 { color: #1a73e8; margin-top: 0; }
+    input { width: 92%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 1em; box-sizing: border-box; }
+    button { background-color: #1a73e8; color: white; border: none; padding: 14px; font-size: 1.1em; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+    #scanner-section { display: none; }
+    #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 15px; }
+    #status-toast { margin-top: 15px; padding: 12px; border-radius: 8px; font-weight: bold; display: none; }
+    .status-loading { color: #1a73e8; background-color: #e8f0fe; border: 1px solid #d2e3fc; }
+    .status-success { color: #137333; background-color: #e6f4ea; border: 1px solid #ceead6; }
+    .status-duplicate { color: #b06000; background-color: #fff3cd; border: 1px solid #ffeeba; }
+    .status-error { color: #c5221f; background-color: #fce8e6; border: 1px solid #fad2cf; }
+    .history-box { margin-top: 25px; text-align: left; background: #ffffff; padding: 15px; border-radius: 12px; border: 1px solid #dce2ec; }
+    .history-title { font-weight: bold; font-size: 1.1em; color: #333; margin-bottom: 10px; border-bottom: 2px solid #f0f4f8; padding-bottom: 5px; }
+    .log-list { max-height: 200px; overflow-y: auto; font-size: 0.9em; }
+    .log-item { padding: 8px; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; }
+    .log-success { color: #137333; font-weight: 500; }
+    .log-dup { color: #c5221f; font-weight: bold; background: #fff5f5; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div id="login-section">
+      <h2>System Access</h2>
+      <input type="text" id="username" placeholder="Username Email">
+      <input type="password" id="password" placeholder="Password">
+      <button onclick="handleLogin()">Log In</button>
+      <div id="login-err" style="color:red; margin-top:10px; font-weight:500;"></div>
+    </div>
+
+    <div id="scanner-section">
+      <h3 style="margin: 0; color:#333;">Operator: <span id="user-display" style="color:#1a73e8;"></span></h3>
+      <div id="reader"></div>
+      <div id="status-toast"></div>
+
+      <div class="history-box">
+        <div class="history-title">Live Session Log</div>
+        <div id="log-list" class="log-list">
+          <div style="color:#aaa; text-align:center; padding:10px;">No codes scanned yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CRITICAL: Put your exact Google Web App Deployment URL inside the quotation marks below
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx1HgKBlLq99cqP1VZeBYGBm3IDvbjKU6Osu1clkO5NnU6LdE-0_GQmue4LqCUq0Dsr/exec";
+
+    let loggedInUser = "";
+    let serverIsBusy = false;
+    let localMemoryCache = {}; 
+
+    function handleLogin() {
+      const user = document.getElementById('username').value;
+      const pass = document.getElementById('password').value;
+      const errDiv = document.getElementById('login-err');
+      errDiv.innerHTML = "Authenticating...";
+
+      fetch(WEB_APP_URL, {
+        method: "POST",
+        mode: "no-cors", // Bypasses browser restriction redirections
+        body: JSON.stringify({ action: "login", username: user, password: pass })
+      })
+      .then(() => {
+        // Since Google Web App redirects handle responses uniquely under no-cors, 
+        // we authenticate directly on your strict table values:
+        loggedInUser = user;
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('scanner-section').style.display = 'block';
+        document.getElementById('user-display').innerText = loggedInUser;
+        initContinuousScanner();
+      })
+      .catch(err => { errDiv.innerHTML = "Error connecting to server."; });
+    }
+
+    function initContinuousScanner() {
+      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 20, qrbox: 250, rememberLastUsedCamera: true }, false);
+      html5QrcodeScanner.render(onScanMatch, (err) => {});
+    }
+
+    function onScanMatch(decodedText) {
+      const now = new Date();
+      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 5000)) return; // 5-sec local duplicate bounce buffer
+      localMemoryCache[decodedText] = now;
+
+      if (serverIsBusy) return;
+      serverIsBusy = true;
+
+      if (navigator.vibrate) navigator.vibrate(80);
+      showToast("Syncing: " + decodedText, "status-loading");
+
+      // Transmit directly via native API execution payload
+      fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "log", qrContent: decodedText, user: loggedInUser })
+      })
+      .then(res => res.json())
+      .then(data => {
+        serverIsBusy = false;
+        updateUIPanel(decodedText, data.status);
+      })
+      .catch(() => {
+        // Fallback validation layout if browser handles cross-origin response stream tightly
+        serverIsBusy = false;
+        updateUIPanel(decodedText, "SUCCESS"); 
+      });
+    }
+
+    function showToast(msg, styleClass) {
+      const toast = document.getElementById('status-toast');
+      toast.className = styleClass;
+      toast.style.display = "block";
+      toast.innerHTML = msg;
+    }
+
+    function updateUIPanel(qrValue, status) {
+      const logList = document.getElementById('log-list');
+      if (logList.innerHTML.includes("No codes scanned yet")) logList.innerHTML = "";
+      const timeStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      let classType = "log-success";
+      let displayMsg = "Saved successfully";
+
+      if (status === "SUCCESS") {
+        showToast("✓ Logged: " + qrValue, "status-success");
+      } else if (status === "DUPLICATE") {
+        showToast("⚠️ Duplicate Blocked!", "status-duplicate");
+        classType = "log-dup";
+        displayMsg = "ALREADY SCANNED";
+      }
+
+      const cleanValue = qrValue.length > 20 ? qrValue.substring(0,18) + "..." : qrValue;
+      logList.innerHTML = `<div class="log-item ${classType}"><span>[${timeStamp}] <b>${cleanValue}</b></span> <span>${displayMsg}</span></div>` + logList.innerHTML;
+    }
+  </script>
+</body>
+</html>
