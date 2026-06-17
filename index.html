@@ -1,28 +1,185 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Professional Continuous QR Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; text-align: center; padding: 20px 10px; background-color: #f0f4f8; margin: 0; }
-    .container { max-width: 480px; margin: 0 auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-    h2 { color: #1a73e8; margin-top: 0; }
-    input { width: 92%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 1em; box-sizing: border-box; }
-    button { background-color: #1a73e8; color: white; border: none; padding: 14px; font-size: 1.1em; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+    :root {
+      --primary: #1a73e8;
+      --primary-hover: #1557b0;
+      --success: #137333;
+      --success-bg: #e6f4ea;
+      --danger: #c5221f;
+      --danger-bg: #fce8e6;
+      --warning: #b06000;
+      --warning-bg: #fff3cd;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #202124;
+      --text-muted: #5f6368;
+      --border: #dadce0;
+    }
+
+    body { 
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; 
+      text-align: center; 
+      padding: 40px 16px; 
+      background-color: var(--bg); 
+      color: var(--text);
+      margin: 0; 
+    }
+
+    .container { 
+      max-width: 420px; 
+      margin: 0 auto; 
+      background: var(--card-bg); 
+      padding: 32px 24px; 
+      border-radius: 16px; 
+      box-shadow: 0 1px 3px rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15); 
+    }
+
+    h2 { 
+      font-size: 1.6em;
+      font-weight: 600;
+      color: var(--text); 
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.95em;
+      margin-bottom: 24px;
+    }
+
+    /* Professional Form Layout */
+    .form-group {
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.85em;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      padding-left: 4px;
+    }
+
+    input { 
+      width: 100%; 
+      padding: 12px 16px; 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      font-size: 1em; 
+      box-sizing: border-box; 
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(26,115,232,0.15);
+    }
+
+    /* Sleek, Proportionate Buttons */
+    button { 
+      background-color: var(--primary); 
+      color: white; 
+      border: none; 
+      padding: 12px 24px; 
+      font-size: 1em; 
+      font-weight: 500; 
+      border-radius: 24px; /* Pill shape */
+      cursor: pointer; 
+      width: auto; /* Shrinks button size to content fit */
+      min-width: 160px;
+      margin-top: 16px; 
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      transition: background-color 0.2s, box-shadow 0.2s;
+    }
+    button:hover { 
+      background-color: var(--primary-hover); 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.15);
+    }
+    
+    #scanner-section button {
+      background-color: #5f6368; /* Clean minimalist gray for operational action tags */
+      padding: 10px 20px;
+      font-size: 0.9em;
+      min-width: 120px;
+    }
+    #scanner-section button:hover {
+      background-color: #3c4043;
+    }
+
     #scanner-section { display: none; }
-    #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; margin-top: 15px; }
-    #status-toast { margin-top: 15px; padding: 12px; border-radius: 8px; font-weight: bold; display: none; }
-    .status-loading { color: #1a73e8; background-color: #e8f0fe; border: 1px solid #d2e3fc; }
-    .status-success { color: #137333; background-color: #e6f4ea; border: 1px solid #ceead6; }
-    .status-duplicate { color: #b06000; background-color: #fff3cd; border: 1px solid #ffeeba; }
-    .status-error { color: #c5221f; background-color: #fce8e6; border: 1px solid #fad2cf; }
-    .history-box { margin-top: 25px; text-align: left; background: #ffffff; padding: 15px; border-radius: 12px; border: 1px solid #dce2ec; }
-    .history-title { font-weight: bold; font-size: 1.1em; color: #333; margin-bottom: 10px; border-bottom: 2px solid #f0f4f8; padding-bottom: 5px; }
-    .log-list { max-height: 200px; overflow-y: auto; font-size: 0.9em; }
-    .log-item { padding: 8px; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; }
-    .log-success { color: #137333; font-weight: 500; }
-    .log-dup { color: #c5221f; font-weight: bold; background: #fff5f5; }
+    
+    /* Elegant Frame Integration */
+    #reader { 
+      width: 100%; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      background: #000; 
+      margin-top: 20px; 
+      border: none;
+    }
+    /* Fix internal UI generated by library */
+    #reader video { border-radius: 12px; }
+    #reader button { margin: 10px auto !important; padding: 8px 16px; font-size: 0.85em; width: auto; min-width: 100px;}
+
+    /* Premium Toast Status Box */
+    #status-toast { 
+      margin-top: 16px; 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      font-weight: 500; 
+      font-size: 0.95em; 
+      display: none; 
+      animation: fadeIn 0.2s ease-out;
+    }
+    .status-loading { color: var(--primary); background-color: #e8f0fe; border: 1px solid #d2e3fc; }
+    .status-success { color: var(--success); background-color: var(--success-bg); border: 1px solid #ceead6; }
+    .status-duplicate { color: var(--warning); background-color: var(--warning-bg); border: 1px solid #ffeeba; }
+    .status-error { color: var(--danger); background-color: var(--danger-bg); border: 1px solid #fad2cf; }
+
+    /* Live History Logs Grid */
+    .history-box { 
+      margin-top: 28px; 
+      text-align: left; 
+      background: var(--card-bg); 
+      padding: 0;
+    }
+    .history-title { 
+      font-weight: 600; 
+      font-size: 1em; 
+      color: var(--text); 
+      margin-bottom: 12px; 
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .log-list { 
+      max-height: 180px; 
+      overflow-y: auto; 
+      font-size: 0.9em; 
+    }
+    .log-item { 
+      padding: 10px 8px; 
+      border-bottom: 1px solid #f1f3f4; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+    }
+    .log-item span:first-child { color: var(--text-muted); }
+    .log-item b { color: var(--text); font-weight: 500; margin-left: 6px; }
+    .log-success { color: var(--success); font-weight: 600; }
+    .log-dup { color: var(--danger); font-weight: 600; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -30,21 +187,34 @@
   <div class="container">
     <div id="login-section">
       <h2>System Access</h2>
-      <input type="text" id="username" placeholder="Username Email">
-      <input type="password" id="password" placeholder="Password">
+      <p class="subtitle">Please authenticate to access the camera terminal.</p>
+      
+      <div class="form-group">
+        <label for="username">Username Email</label>
+        <input type="text" id="username" placeholder="name@email.com">
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••">
+      </div>
+      
       <button onclick="handleLogin()">Log In</button>
-      <div id="login-err" style="color:red; margin-top:10px; font-weight:500;"></div>
+      <div id="login-err" style="color:var(--danger); margin-top:14px; font-weight:500; font-size:0.9em;"></div>
     </div>
 
     <div id="scanner-section">
-      <h3 style="margin: 0; color:#333;">Operator: <span id="user-display" style="color:#1a73e8;"></span></h3>
+      <h3 style="margin: 0 0 4px 0; font-weight: 500; font-size: 1.1em; color: var(--text-muted);">
+        Operator: <span id="user-display" style="color: var(--primary); font-weight: 600;"></span>
+      </h3>
+      
       <div id="reader"></div>
       <div id="status-toast"></div>
 
       <div class="history-box">
         <div class="history-title">Live Session Log</div>
         <div id="log-list" class="log-list">
-          <div style="color:#aaa; text-align:center; padding:10px;">No codes scanned yet.</div>
+          <div style="color: var(--text-muted); text-align:center; padding:16px; font-size:0.95em;">No codes scanned yet.</div>
         </div>
       </div>
     </div>
@@ -62,16 +232,15 @@
       const user = document.getElementById('username').value;
       const pass = document.getElementById('password').value;
       const errDiv = document.getElementById('login-err');
+      if(!user || !pass) { errDiv.innerHTML = "Please complete all fields."; return; }
       errDiv.innerHTML = "Authenticating...";
 
       fetch(WEB_APP_URL, {
         method: "POST",
-        mode: "no-cors", // Bypasses browser restriction redirections
+        mode: "no-cors",
         body: JSON.stringify({ action: "login", username: user, password: pass })
       })
       .then(() => {
-        // Since Google Web App redirects handle responses uniquely under no-cors, 
-        // we authenticate directly on your strict table values:
         loggedInUser = user;
         document.getElementById('login-section').style.display = 'none';
         document.getElementById('scanner-section').style.display = 'block';
@@ -82,22 +251,21 @@
     }
 
     function initContinuousScanner() {
-      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 20, qrbox: 250, rememberLastUsedCamera: true }, false);
+      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 20, qrbox: 220, rememberLastUsedCamera: true }, false);
       html5QrcodeScanner.render(onScanMatch, (err) => {});
     }
 
     function onScanMatch(decodedText) {
       const now = new Date();
-      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 5000)) return; // 5-sec local duplicate bounce buffer
+      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 5000)) return; 
       localMemoryCache[decodedText] = now;
 
       if (serverIsBusy) return;
       serverIsBusy = true;
 
       if (navigator.vibrate) navigator.vibrate(80);
-      showToast("Syncing: " + decodedText, "status-loading");
+      showToast("Syncing data...", "status-loading");
 
-      // Transmit directly via native API execution payload
       fetch(WEB_APP_URL, {
         method: "POST",
         body: JSON.stringify({ action: "log", qrContent: decodedText, user: loggedInUser })
@@ -108,7 +276,6 @@
         updateUIPanel(decodedText, data.status);
       })
       .catch(() => {
-        // Fallback validation layout if browser handles cross-origin response stream tightly
         serverIsBusy = false;
         updateUIPanel(decodedText, "SUCCESS"); 
       });
@@ -127,18 +294,18 @@
       const timeStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       
       let classType = "log-success";
-      let displayMsg = "Saved successfully";
+      let displayMsg = "✓ Saved";
 
       if (status === "SUCCESS") {
         showToast("✓ Logged: " + qrValue, "status-success");
       } else if (status === "DUPLICATE") {
-        showToast("⚠️ Duplicate Blocked!", "status-duplicate");
+        showToast("⚠️ Already Scanned!", "status-duplicate");
         classType = "log-dup";
-        displayMsg = "ALREADY SCANNED";
+        displayMsg = "❌ Duplicate";
       }
 
-      const cleanValue = qrValue.length > 20 ? qrValue.substring(0,18) + "..." : qrValue;
-      logList.innerHTML = `<div class="log-item ${classType}"><span>[${timeStamp}] <b>${cleanValue}</b></span> <span>${displayMsg}</span></div>` + logList.innerHTML;
+      const cleanValue = qrValue.length > 18 ? qrValue.substring(0,16) + "..." : qrValue;
+      logList.innerHTML = `<div class="log-item"><span>[${timeStamp}] <b>${cleanValue}</b></span> <span class="${classType}">${displayMsg}</span></div>` + logList.innerHTML;
     }
   </script>
 </body>
