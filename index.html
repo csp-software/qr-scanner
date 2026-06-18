@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSP | High-Speed Terminal</title>
+  <title>CSP | Optimized QR Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
@@ -67,21 +67,24 @@
 
     #scanner-section { display: none; }
     
-    #reader { width: 100%; max-height: 230px; border-radius: 12px; overflow: hidden; background: #000; margin-top: 15px; }
+    #reader { width: 100%; max-height: 230px; border-radius: 12px; overflow: hidden; background: #000; margin-top: 15px; border: none; }
     #reader video { max-height: 230px; object-fit: cover; border-radius: 12px; }
     #reader button { margin: 6px auto !important; padding: 6px 12px; font-size: 0.8em;}
 
     #status-toast { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-weight: 500; font-size: 0.9em; display: none; }
-    .status-syncing { color: #b06000; background-color: #fff3cd; border: 1px solid #ffeeba; }
+    .status-loading { color: var(--primary); background-color: #e8f0fe; border: 1px solid #d2e3fc; }
     .status-success { color: var(--success); background-color: var(--success-bg); border: 1px solid #ceead6; }
+    .status-duplicate { color: var(--warning); background-color: var(--warning-bg); border: 1px solid #ffeeba; }
+    .status-error { color: var(--danger); background-color: var(--danger-bg); border: 1px solid #fad2cf; }
 
-    .history-box { margin-top: 20px; text-align: left; }
+    .history-box { margin-top: 20px; text-align: left; background: var(--card-bg); }
     .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-    .log-list { max-height: 180px; overflow-y: auto; font-size: 0.85em; }
+    .log-list { max-height: 160px; overflow-y: auto; font-size: 0.85em; }
     .log-item { padding: 8px 4px; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; align-items: center; }
-    .sync-pending { color: #b06000; font-weight: bold; }
-    .sync-done { color: var(--success); font-weight: bold; }
-    .sync-dup { color: var(--danger); font-weight: bold; }
+    .log-item span:first-child { color: var(--text-muted); }
+    .log-item b { color: var(--text); font-weight: 500; margin-left: 4px; }
+    .log-success { color: var(--success); font-weight: 600; }
+    .log-dup { color: var(--danger); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -92,20 +95,19 @@
       <p class="subtitle">Designed by: <span style="color: #8B4513; font-weight: bold;">C S Pradeep Kumar</span></p>
       <div class="form-group">
         <label>Username</label>
-        <input type="text" id="username">
+        <input type="text" id="username" placeholder="Enter username">
       </div>
       <div class="form-group">
         <label>Password</label>
-        <input type="password" id="password">
+        <input type="password" id="password" placeholder="Enter password">
       </div>
       <button id="login-btn" onclick="handleLogin()">Log In</button>
-      <div id="login-err" style="color:var(--danger); margin-top:12px; font-weight:500;"></div>
+      <div id="login-err" style="color:var(--danger); margin-top:12px; font-weight:500; font-size:0.85em;"></div>
     </div>
 
     <div id="scanner-section">
-      <h3 style="margin:0 0 4px 0; font-size:0.95em; color: var(--text-muted);">
-        Operator: <span id="user-display" style="color: var(--primary); font-weight:600;"></span> 
-        | Pending Sync: <span id="queue-count" style="color:var(--warning); font-weight:bold;">0</span>
+      <h3 style="margin: 0 0 2px 0; font-weight: 500; font-size: 1em; color: var(--text-muted);">
+        Username: <span id="user-display" style="color: var(--primary); font-weight: 600;"></span>
       </h3>
       
       <div id="reader"></div>
@@ -113,7 +115,7 @@
 
       <div class="history-box">
         <div class="history-header">
-          <span style="font-weight:600; font-size:0.95em;">Live Session Logs</span>
+          <div style="font-weight: 600; font-size: 0.95em; color: var(--text);">Session Scan Log</div>
           <button class="btn-secondary" onclick="exportToPDF()">📑 Export PDF</button>
         </div>
         <div id="log-list" class="log-list">
@@ -124,12 +126,13 @@
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyP9Fl-taLi6zqhpQEBRwmpfBM0PUyQ79npkeJ6a37zZLta6hjBy_2equBgZnNKmS3z/exec";
+    // ⚠️ CRITICAL STEP: Paste your live Web App URL below
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzw1BjHaFKblXCz2jKpvhLDeOr4F5_k8ApP5aTbtuxyYEU3Zb4dKSttBF4c5UBZ_iUI/exec";
 
     let loggedInUser = "";
-    let scanQueue = [];       // Holds logs waiting to upload to Google Sheets
-    let isSyncing = false;    // Sync loop tracking flag
-    let localMemoryCache = {}; // Stops instant re-scans of the exact same code
+    let serverIsBusy = false;
+    let localMemoryCache = {}; 
+    let sessionScans = []; 
 
     function playBeep(isSuccess) {
       try {
@@ -138,9 +141,9 @@
         const gainNode = audioCtx.createGain();
         oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
         oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(isSuccess ? 1200 : 450, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
-        oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.08);
+        oscillator.frequency.setValueAtTime(isSuccess ? 1200 : 400, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        oscillator.start(); oscillator.stop(audioCtx.currentTime + (isSuccess ? 0.08 : 0.25));
       } catch (e) { console.log(e); }
     }
 
@@ -148,102 +151,65 @@
       const user = document.getElementById('username').value.trim();
       const pass = document.getElementById('password').value.trim();
       const errDiv = document.getElementById('login-err');
-      if(!user || !pass) { errDiv.innerHTML = "Please fill all fields."; return; }
+      const loginBtn = document.getElementById('login-btn');
       
+      if(!user || !pass) { errDiv.innerHTML = "Please complete all fields."; return; }
       errDiv.style.color = "var(--primary)";
-      errDiv.innerHTML = "Authenticating secure environment...";
-      
+      errDiv.innerHTML = "Validating credentials via secure terminal...";
+      loginBtn.disabled = true;
+
       fetch(`${WEB_APP_URL}?action=login&username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`)
       .then(res => res.json())
       .then(data => {
+        loginBtn.disabled = false;
         if (data && data.success === true) {
           loggedInUser = data.username;
+          errDiv.innerHTML = "";
           document.getElementById('login-section').style.display = 'none';
           document.getElementById('scanner-section').style.display = 'block';
           document.getElementById('user-display').innerText = loggedInUser;
-          initHighSpeedScanner();
-          setInterval(processSyncQueue, 1500); // Check queue every 1.5 seconds in background
+          initBalancedScanner();
         } else {
           errDiv.style.color = "var(--danger)";
-          errDiv.innerHTML = "Access Denied: Invalid Credentials.";
+          errDiv.innerHTML = data.message || "Access Denied: Invalid Credentials.";
         }
       })
       .catch(() => {
+        loginBtn.disabled = false;
         errDiv.style.color = "var(--danger)";
-        errDiv.innerHTML = "Server connectivity failure.";
+        errDiv.innerHTML = "Connection Error.";
       });
     }
 
-    function initHighSpeedScanner() {
-      // Adjusted FPS to 30 for high-velocity rapid target framing recognition
-      const scanner = new Html5QrcodeScanner("reader", { fps: 30, qrbox: 180, rememberLastUsedCamera: true }, false);
-      scanner.render(onInstantScan, (err) => {});
+    function initBalancedScanner() {
+      // 15 FPS frames configuration for optimized moderate scanning recognition speeds
+      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 180, rememberLastUsedCamera: true }, false);
+      html5QrcodeScanner.render(onScanMatch, (err) => {});
     }
 
-    function onInstantScan(decodedText) {
+    function onScanMatch(decodedText) {
       const now = new Date();
-      // Block processing duplicate frames within 4 seconds, but accept new frames instantly
-      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 4000)) return; 
+      // Moderate pacing delay rule: ignores the camera feedback loop for 1.5 seconds after a successful capture
+      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 1500)) return; 
       localMemoryCache[decodedText] = now;
 
-      playBeep(true); // Immediate audio confirmation for operator
-      
-      const timeStamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const dateStamp = now.toISOString().split('T')[0];
-      const scanId = "id_" + now.getTime(); // Unique ID for tracking UI elements
+      if (serverIsBusy) return;
+      serverIsBusy = true;
 
-      // Add directly to background queue array
-      scanQueue.push({ id: scanId, qr: decodedText, date: dateStamp, time: timeStamp, user: loggedInUser });
-      document.getElementById('queue-count').innerText = scanQueue.length;
-
-      // Render instantly on user UI panel as "Syncing..."
-      const logList = document.getElementById('log-list');
-      const noDataMsg = document.getElementById('no-data-msg');
-      if (noDataMsg) noDataMsg.remove();
-
-      const shortQR = decodedText.length > 18 ? decodedText.substring(0,16) + "..." : decodedText;
-      logList.innerHTML = `
-        <div class="log-item" id="${scanId}">
-          <span>[${timeStamp}] <b>${shortQR}</b></span>
-          <span class="sync-status sync-pending">⏳ Syncing</span>
-        </div>` + logList.innerHTML;
-
-      showToast("⚡ Code Scanned! Saving in background...", "status-success");
-    }
-
-    // BACKGROUND SYNC ENGINE: Uploads items one by one asynchronously
-    function processSyncQueue() {
-      if (isSyncing || scanQueue.length === 0) return;
-      isSyncing = true;
-
-      const item = scanQueue[0]; // Take the first item in line
+      showToast("Saving data directly...", "status-loading");
 
       fetch(WEB_APP_URL, {
         method: "POST",
-        body: JSON.stringify({ action: "log", qrContent: item.qr, user: item.user })
+        body: JSON.stringify({ qrContent: decodedText, user: loggedInUser })
       })
       .then(res => res.json())
       .then(data => {
-        const rowUI = document.getElementById(item.id);
-        const statusSpan = rowUI ? rowUI.querySelector('.sync-status') : null;
-
-        if (data.status === "SUCCESS") {
-          if(statusSpan) { statusSpan.className = "sync-status sync-done"; statusSpan.innerText = "✓ Saved"; }
-          item.status = "Saved";
-        } else if (data.status === "DUPLICATE") {
-          if(statusSpan) { statusSpan.className = "sync-status sync-dup"; statusSpan.innerText = "❌ Duplicate"; }
-          item.status = "Duplicate Blocked";
-          playBeep(false);
-        }
-        
-        sessionScans.push(item); // Keep for PDF export
-        scanQueue.shift(); // Remove from queue on completion
-        document.getElementById('queue-count').innerText = scanQueue.length;
-        isSyncing = false;
+        serverIsBusy = false;
+        updateUIPanel(decodedText, data.status);
       })
       .catch(() => {
-        // Network timeout/busy handling: leave it in queue to retry automatically next cycle
-        isSyncing = false; 
+        serverIsBusy = false;
+        showToast("⚠️ Network Error saving entry", "status-error");
       });
     }
 
@@ -252,15 +218,41 @@
       toast.className = styleClass; toast.style.display = "block"; toast.innerHTML = msg;
     }
 
+    function updateUIPanel(qrValue, status) {
+      const logList = document.getElementById('log-list');
+      const noDataMsg = document.getElementById('no-data-msg');
+      if (noDataMsg) noDataMsg.remove();
+      
+      const timeStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateStamp = new Date().toISOString().split('T')[0];
+      
+      let classType = "log-success";
+      let displayMsg = "✓ Saved";
+
+      if (status === "SUCCESS") {
+        playBeep(true); 
+        showToast("✓ Saved successfully to sheet", "status-success");
+        sessionScans.push({ qr: qrValue, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Saved" });
+      } else if (status === "DUPLICATE") {
+        playBeep(false); 
+        showToast("⚠️ Already Scanned!", "status-duplicate");
+        classType = "log-dup"; displayMsg = "❌ Duplicate";
+        sessionScans.push({ qr: qrValue, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Duplicate Blocked" });
+      }
+
+      const cleanValue = qrValue.length > 18 ? qrValue.substring(0,16) + "..." : qrValue;
+      logList.innerHTML = `<div class="log-item"><span>[${timeStamp}] <b>${cleanValue}</b></span> <span class="${classType}">${displayMsg}</span></div>` + logList.innerHTML;
+    }
+
     function exportToPDF() {
-      if (sessionScans.length === 0) { alert("No synchronized logs to export."); return; }
+      if (sessionScans.length === 0) { alert("No logs recorded to export."); return; }
       const printWindow = window.open('', '_blank');
       const todayDate = new Date().toISOString().split('T')[0];
       let tableRows = "";
       sessionScans.forEach((row, index) => {
         tableRows += `<tr><td>${index + 1}</td><td>${row.qr}</td><td>${row.date}</td><td>${row.time}</td><td>${row.user}</td><td>${row.status}</td></tr>`;
       });
-      const htmlContent = `<html><head><title>Report</title><style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;text-align:left;}th{background:#f2f2f2;}</style></head><body><h2>Operations Report - ${todayDate}</h2><table><thead><tr><th>#</th><th>Data</th><th>Date</th><th>Time</th><th>User</th><th>Status</th></tr></thead><tbody>${tableRows}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`;
+      const htmlContent = `<html><head><title>Scan Report</title><style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;}th{background:#f2f2f2;}</style></head><body><h2>Scan Report - ${todayDate}</h2><table><thead><tr><th>#</th><th>Data</th><th>Date</th><th>Time</th><th>User</th><th>Status</th></tr></thead><tbody>${tableRows}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`;
       printWindow.document.write(htmlContent); printWindow.document.close();
     }
   </script>
