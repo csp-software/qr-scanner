@@ -218,8 +218,8 @@
   </div>
 
   <script>
-    // ⚠️ CRITICAL STEP: Paste your exact Deployment Web App URL between the quotation marks below:
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzdB5rjMjyOckqPkotkeLPH60IaBBzJ57gTHV1ELzIjXsk3z4u0TQ7G10jIRucR187d/exec";
+    // ⚠️ CRITICAL STEP: Paste your exact Deployment Web App URL here
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSCOlE9LQaMTNJ0a4b8_HV3D_bAyjvhy2z9sORcTJFrcwuz0oJ9G45HG8jUUDWR69Q/exec";
 
     let loggedInUser = "";
     let serverIsBusy = false;
@@ -256,21 +256,15 @@
       errDiv.innerHTML = "Validating credentials via secure terminal...";
       loginBtn.disabled = true;
 
-      // Clean approach to circumvent CORS redirection blockages safely
-      fetch(WEB_APP_URL, {
-        method: "POST",
-        mode: "cors", 
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "login", username: user, password: pass })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error("Server communication fault.");
-        return res.json();
-      })
+      // Constructed URL request parameter string for smooth GET validation
+      const targetUrl = `${WEB_APP_URL}?action=login&username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+
+      fetch(targetUrl, { method: "GET" })
+      .then(res => res.json())
       .then(data => {
         loginBtn.disabled = false;
         
-        // STAGE VALIDATION: Only advance dashboard if success explicitly reads true
+        // STRICT DOUBLE-LOCK VALIDATION CHECK
         if (data && data.success === true) {
           loggedInUser = data.username;
           errDiv.innerHTML = "";
@@ -286,7 +280,7 @@
       .catch(err => { 
         loginBtn.disabled = false;
         errDiv.style.color = "var(--danger)";
-        errDiv.innerHTML = "Security Connection Error. Please verify deployment matches requirements.";
+        errDiv.innerHTML = "Connection Error. Please ensure script deployment is active.";
         console.error(err);
       });
     }
@@ -308,9 +302,7 @@
 
       fetch(WEB_APP_URL, {
         method: "POST",
-        mode: "cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "log", qrContent: decodedText, user: loggedInUser })
+        body: JSON.stringify({ qrContent: decodedText, user: loggedInUser })
       })
       .then(res => res.json())
       .then(data => {
