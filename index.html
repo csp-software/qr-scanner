@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSP1 | Optimized QR Scanner</title>
+  <title>CSP | Optimized QR Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
@@ -131,7 +131,7 @@
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyiFnVn9kEil2hZlkaIMNfPBJZrwWyWgJxV0gtKf4Cztyq2POZfghIUxFoYOipIkzjt/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyiFnVn9kEil2hZlkaIMNfPBJZrwWyWgJxV0gtKf4Cztyq2POZfghIUxFoYOipIkzjt/exec/exec";
 
     let loggedInUser = "";
     let localMemoryCache = {}; 
@@ -188,18 +188,15 @@
     }
 
     function initBalancedScanner() {
-      // Configured with higher frame-rate and lower delays to ensure ultra-responsive captures
       const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 30, qrbox: 200, rememberLastUsedCamera: true }, false);
       html5QrcodeScanner.render(onScanMatch, (err) => {});
     }
 
     function onScanMatch(decodedText) {
       const now = new Date();
-      // Multi-scan safeguard restriction (2.5 seconds window to prevent scanning same code twice by accident)
       if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 2500)) return; 
       localMemoryCache[decodedText] = now;
 
-      // 1. INSTANT FRONTEND FEEDBACK (Fraction of a second)
       playBeep(true);
       showToast("⚡ QR Captured! Scanning next...", "status-success");
       
@@ -209,13 +206,10 @@
       const year = now.getFullYear();
       const dateStamp = `${day}-${month}-${year}`;
       
-      // Unique temporary tracking ID for updating status dynamically
       const trackingId = "scan_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
       
-      // Update local panel array optimistically
       sessionScans.push({ id: trackingId, qr: decodedText, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Syncing..." });
       
-      // Append row onto UI immediately
       const logList = document.getElementById('log-list');
       const noDataMsg = document.getElementById('no-data-msg');
       if (noDataMsg) noDataMsg.remove();
@@ -229,7 +223,6 @@
         </div>`;
       logList.innerHTML = newRowHtml + logList.innerHTML;
 
-      // 2. STACK TO BACKGROUND QUEUE (Never blocks the user)
       uploadQueue.push({ id: trackingId, qrContent: decodedText, user: loggedInUser });
       processBackgroundQueue();
     }
@@ -263,19 +256,17 @@
           if (savedIndex !== -1) sessionScans[savedIndex].status = "Duplicate Blocked";
         }
 
-        // Remove item from queue and look for next item
         uploadQueue.shift();
         isProcessingQueue = false;
         processBackgroundQueue();
       })
       .catch(() => {
-        // Network retry loop structure: Pushes item to the bottom of queue to preserve entry if connection is drops
         console.log("Network lag encountered. Retrying entry synchronization...");
         const failedItem = uploadQueue.shift();
         uploadQueue.push(failedItem);
         
         isProcessingQueue = false;
-        setTimeout(processBackgroundQueue, 3000); // Retry sync sequence after 3-second recovery delay
+        setTimeout(processBackgroundQueue, 3000);
       });
     }
 
@@ -284,7 +275,7 @@
       toast.className = styleClass; toast.style.display = "block"; toast.innerHTML = msg;
     }
 
-    // EXPORT TO PDF WITH TIGHT ROW HEIGHTS AND ADJUSTED WIDTHS
+    // FIXED: EXPORT TO PDF WORKAROUND FOR BLANK WINDOW PRINT BLOCKS
     function exportToPDF() {
       if (sessionScans.length === 0) { alert("No logs recorded to export."); return; }
       
@@ -412,16 +403,19 @@
           </style>
         </head>
         <body>
-          \${finalHTMLHTML}
-          <script>
-            window.onload = function() { window.print(); }
-          <\/script>
+          ${finalHTMLHTML}
         </body>
         </html>
       `;
 
       printWindow.document.write(htmlContent);
       printWindow.document.close();
+
+      // Crucial Fix: Wait for the newly created context window to complete layout processing, then print directly
+      setTimeout(function() {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
     }
   </script>
 </body>
