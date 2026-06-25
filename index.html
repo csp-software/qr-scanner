@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSP | Optimized QR Scanner</title>
+  <title>CSP2 | Optimized QR Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
@@ -82,8 +82,7 @@
     .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
     .log-list { max-height: 160px; overflow-y: auto; font-size: 0.85em; }
     .log-item { padding: 8px 4px; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; align-items: center; }
-    .log-item span:first-child { color: var(--text-muted); }
-    .log-item b { color: var(--text); font-weight: 500; margin-left: 4px; }
+    .log-item b { color: var(--text); font-weight: 500; }
     
     .log-pending { color: var(--warning); font-weight: 600; animation: blinker 1.5s linear infinite; }
     .log-success { color: var(--success); font-weight: 600; }
@@ -131,7 +130,7 @@
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyiFnVn9kEil2hZlkaIMNfPBJZrwWyWgJxV0gtKf4Cztyq2POZfghIUxFoYOipIkzjt/exec/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjiEKfj7sQTmJsSotnUTCekXysNG1iRy_NHHHkMRSTSt6Hgz17jbu3MVumjw9I1RnG/exec";
 
     let loggedInUser = "";
     let localMemoryCache = {}; 
@@ -208,17 +207,19 @@
       
       const trackingId = "scan_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
       
+      // Save full time data into memory for PDF generation later
       sessionScans.push({ id: trackingId, qr: decodedText, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Syncing..." });
       
       const logList = document.getElementById('log-list');
       const noDataMsg = document.getElementById('no-data-msg');
       if (noDataMsg) noDataMsg.remove();
       
-      const cleanValue = decodedText.length > 18 ? decodedText.substring(0,16) + "..." : decodedText;
+      const cleanValue = decodedText.length > 25 ? decodedText.substring(0,22) + "..." : decodedText;
       
+      // FIXED: Removed the timestamp string completely from the front-end display line
       const newRowHtml = `
         <div class="log-item" id="${trackingId}">
-          <span>[${timeStamp}] <b>${cleanValue}</b></span> 
+          <span><b>${cleanValue}</b></span> 
           <span class="log-pending">⏳ Syncing</span>
         </div>`;
       logList.innerHTML = newRowHtml + logList.innerHTML;
@@ -275,7 +276,6 @@
       toast.className = styleClass; toast.style.display = "block"; toast.innerHTML = msg;
     }
 
-    // FIXED: EXPORT TO PDF WORKAROUND FOR BLANK WINDOW PRINT BLOCKS
     function exportToPDF() {
       if (sessionScans.length === 0) { alert("No logs recorded to export."); return; }
       
@@ -304,6 +304,7 @@
             ? "style='background-color:#fce8e6; color:#c5221f; font-weight:bold;'" 
             : "";
           
+          // PDF retains full detailed rows (Index, Payload, Date, Time, User, Status)
           currentPageRows += `
             <tr ${rowColor}>
               <td>${index + 1}</td>
@@ -411,7 +412,6 @@
       printWindow.document.write(htmlContent);
       printWindow.document.close();
 
-      // Crucial Fix: Wait for the newly created context window to complete layout processing, then print directly
       setTimeout(function() {
         printWindow.focus();
         printWindow.print();
