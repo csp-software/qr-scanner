@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSP | Optimized QR Scanner</title>
+  <title>CSP1 | Optimized QR Scanner</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
@@ -84,8 +84,12 @@
     .log-item { padding: 8px 4px; border-bottom: 1px solid #f1f3f4; display: flex; justify-content: space-between; align-items: center; }
     .log-item span:first-child { color: var(--text-muted); }
     .log-item b { color: var(--text); font-weight: 500; margin-left: 4px; }
+    
+    .log-pending { color: var(--warning); font-weight: 600; animation: blinker 1.5s linear infinite; }
     .log-success { color: var(--success); font-weight: 600; }
     .log-dup { color: var(--danger); font-weight: 600; }
+
+    @keyframes blinker { 50% { opacity: 0.4; } }
   </style>
 </head>
 <body>
@@ -127,12 +131,13 @@
   </div>
 
   <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjiEKfj7sQTmJsSotnUTCekXysNG1iRy_NHHHkMRSTSt6Hgz17jbu3MVumjw9I1RnG/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyiFnVn9kEil2hZlkaIMNfPBJZrwWyWgJxV0gtKf4Cztyq2POZfghIUxFoYOipIkzjt/exec";
 
     let loggedInUser = "";
-    let serverIsBusy = false;
     let localMemoryCache = {}; 
     let sessionScans = []; 
+    let uploadQueue = [];
+    let isProcessingQueue = false;
 
     function playBeep(isSuccess) {
       try {
@@ -170,6 +175,7 @@
           document.getElementById('user-display').innerText = loggedInUser;
           initBalancedScanner();
         } else {
+          loginBtn.disabled = false;
           errDiv.style.color = "var(--danger)";
           errDiv.innerHTML = data.message || "Access Denied: Invalid Credentials.";
         }
@@ -182,69 +188,100 @@
     }
 
     function initBalancedScanner() {
-      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 180, rememberLastUsedCamera: true }, false);
+      // Configured with higher frame-rate and lower delays to ensure ultra-responsive captures
+      const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 30, qrbox: 200, rememberLastUsedCamera: true }, false);
       html5QrcodeScanner.render(onScanMatch, (err) => {});
     }
 
     function onScanMatch(decodedText) {
       const now = new Date();
-      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 1500)) return; 
+      // Multi-scan safeguard restriction (2.5 seconds window to prevent scanning same code twice by accident)
+      if (localMemoryCache[decodedText] && (now - localMemoryCache[decodedText] < 2500)) return; 
       localMemoryCache[decodedText] = now;
 
-      if (serverIsBusy) return;
-      serverIsBusy = true;
+      // 1. INSTANT FRONTEND FEEDBACK (Fraction of a second)
+      playBeep(true);
+      showToast("⚡ QR Captured! Scanning next...", "status-success");
+      
+      const timeStamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const dateStamp = `${day}-${month}-${year}`;
+      
+      // Unique temporary tracking ID for updating status dynamically
+      const trackingId = "scan_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
+      
+      // Update local panel array optimistically
+      sessionScans.push({ id: trackingId, qr: decodedText, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Syncing..." });
+      
+      // Append row onto UI immediately
+      const logList = document.getElementById('log-list');
+      const noDataMsg = document.getElementById('no-data-msg');
+      if (noDataMsg) noDataMsg.remove();
+      
+      const cleanValue = decodedText.length > 18 ? decodedText.substring(0,16) + "..." : decodedText;
+      
+      const newRowHtml = `
+        <div class="log-item" id="${trackingId}">
+          <span>[${timeStamp}] <b>${cleanValue}</b></span> 
+          <span class="log-pending">⏳ Syncing</span>
+        </div>`;
+      logList.innerHTML = newRowHtml + logList.innerHTML;
 
-      showToast("Saving data directly...", "status-loading");
+      // 2. STACK TO BACKGROUND QUEUE (Never blocks the user)
+      uploadQueue.push({ id: trackingId, qrContent: decodedText, user: loggedInUser });
+      processBackgroundQueue();
+    }
+
+    function processBackgroundQueue() {
+      if (isProcessingQueue || uploadQueue.length === 0) return;
+      isProcessingQueue = true;
+
+      const currentItem = uploadQueue[0];
 
       fetch(WEB_APP_URL, {
         method: "POST",
-        body: JSON.stringify({ qrContent: decodedText, user: loggedInUser })
+        body: JSON.stringify({ qrContent: currentItem.qrContent, user: currentItem.user })
       })
       .then(res => res.json())
       .then(data => {
-        serverIsBusy = false;
-        updateUIPanel(decodedText, data.status);
+        const rowElement = document.getElementById(currentItem.id);
+        const savedIndex = sessionScans.findIndex(item => item.id === currentItem.id);
+
+        if (data.status === "SUCCESS") {
+          if (rowElement) {
+            rowElement.querySelector('.log-pending').className = "log-success";
+            rowElement.querySelector('.log-success').innerText = "✓ Saved";
+          }
+          if (savedIndex !== -1) sessionScans[savedIndex].status = "Saved";
+        } else if (data.status === "DUPLICATE") {
+          if (rowElement) {
+            rowElement.querySelector('.log-pending').className = "log-dup";
+            rowElement.querySelector('.log-dup').innerText = "❌ Duplicate";
+          }
+          if (savedIndex !== -1) sessionScans[savedIndex].status = "Duplicate Blocked";
+        }
+
+        // Remove item from queue and look for next item
+        uploadQueue.shift();
+        isProcessingQueue = false;
+        processBackgroundQueue();
       })
       .catch(() => {
-        serverIsBusy = false;
-        showToast("⚠️ Network Error saving entry", "status-error");
+        // Network retry loop structure: Pushes item to the bottom of queue to preserve entry if connection is drops
+        console.log("Network lag encountered. Retrying entry synchronization...");
+        const failedItem = uploadQueue.shift();
+        uploadQueue.push(failedItem);
+        
+        isProcessingQueue = false;
+        setTimeout(processBackgroundQueue, 3000); // Retry sync sequence after 3-second recovery delay
       });
     }
 
     function showToast(msg, styleClass) {
       const toast = document.getElementById('status-toast');
       toast.className = styleClass; toast.style.display = "block"; toast.innerHTML = msg;
-    }
-
-    function updateUIPanel(qrValue, status) {
-      const logList = document.getElementById('log-list');
-      const noDataMsg = document.getElementById('no-data-msg');
-      if (noDataMsg) noDataMsg.remove();
-      
-      const now = new Date();
-      const timeStamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      
-      const day = String(now.getDate()).padStart(2, '0');
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const year = now.getFullYear();
-      const dateStamp = `${day}-${month}-${year}`;
-      
-      let classType = "log-success";
-      let displayMsg = "✓ Saved";
-
-      if (status === "SUCCESS") {
-        playBeep(true); 
-        showToast("✓ Saved successfully to sheet", "status-success");
-        sessionScans.push({ qr: qrValue, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Saved" });
-      } else if (status === "DUPLICATE") {
-        playBeep(false); 
-        showToast("⚠️ Already Scanned!", "status-duplicate");
-        classType = "log-dup"; displayMsg = "❌ Duplicate";
-        sessionScans.push({ qr: qrValue, date: dateStamp, time: timeStamp, user: loggedInUser, status: "Duplicate Blocked" });
-      }
-
-      const cleanValue = qrValue.length > 18 ? qrValue.substring(0,16) + "..." : qrValue;
-      logList.innerHTML = `<div class="log-item"><span>[${timeStamp}] <b>${cleanValue}</b></span> <span class="${classType}">${displayMsg}</span></div>` + logList.innerHTML;
     }
 
     // EXPORT TO PDF WITH TIGHT ROW HEIGHTS AND ADJUSTED WIDTHS
@@ -351,7 +388,6 @@
             .header h1 { margin: 0; color: #1a73e8; font-size: 24px; font-family: 'Bookman Old Style', Georgia, serif; }
             .header p { margin: 6px 0 0 0; color: #5f6368; font-size: 13px; line-height: 1.5; }
             
-            /* TIGHT ROW FIX: Table setup to avoid flexing height extension loops */
             table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
             th, td { border: 1px solid #dadce0; padding: 6px 8px; text-align: left; line-height: 1.3; }
             th { background-color: #f1f3f4; font-weight: 600; color: #202124; }
@@ -376,7 +412,7 @@
           </style>
         </head>
         <body>
-          ${finalHTMLHTML}
+          \${finalHTMLHTML}
           <script>
             window.onload = function() { window.print(); }
           <\/script>
